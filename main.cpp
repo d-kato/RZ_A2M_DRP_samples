@@ -21,6 +21,8 @@
 #include "r_drp_histogram_normalization.h"
 
 #define RAM_TABLE_DYNAMIC_LOADING   1
+// 0: Use the configuration data stored in ROM directly.
+// 1: Deploy configuration data to RAM to speed up loading to DRP.
 
 /*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
     in accordance with the frame buffer burst transfer mode. */
@@ -62,7 +64,7 @@ static uint8_t fbuf_work0[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute(
 static uint8_t fbuf_work1[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((aligned(32)));
 static uint8_t fbuf_clat8[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((aligned(32)));
 static uint8_t fbuf_overlay[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((section("NC_BSS"),aligned(32)));
-static uint8_t drp_work_buf[((FRAME_BUFFER_STRIDE * ((FRAME_BUFFER_HEIGHT / 3) + 2)) * 2) * 3]__attribute((section("NC_BSS")));
+static uint8_t drp_work_buf[FRAME_BUFFER_STRIDE * (FRAME_BUFFER_HEIGHT + (2 * 3)) * 2]__attribute((section("NC_BSS")));
 static uint8_t nc_memory[512] __attribute((section("NC_BSS")));
 static uint8_t drp_lib_id[R_DK2_TILE_NUM] = {0};
 static Thread drpTask(osPriorityHigh, 1024 * 8);
@@ -125,7 +127,7 @@ static const drp_lib_func drp_lib_func_tbl[] = {
     {&drp_sample_Binarization,    "Binarization   ",  g_drp_lib_binarization_fixed,     sizeof(g_drp_lib_binarization_fixed)     }, // DRP_LIB_BINARIZATION
     {&drp_sample_Erode,           "Erode          ",  g_drp_lib_erode,                  sizeof(g_drp_lib_erode)                  }, // DRP_LIB_ERODE
     {&drp_sample_Dilate,          "Dilate         ",  g_drp_lib_dilate,                 sizeof(g_drp_lib_dilate)                 }, // DRP_LIB_DILATE
-    {&drp_sample_GaussianBlur,    "Gaussian Blur  ",  g_drp_lib_gaussian_blur,          sizeof(g_drp_lib_gaussian_blur)          }, // DRP_LIB_GAUSSIANBLUR
+    {&drp_sample_GaussianBlur,    "GaussianBlur   ",  g_drp_lib_gaussian_blur,          sizeof(g_drp_lib_gaussian_blur)          }, // DRP_LIB_GAUSSIANBLUR
     {&drp_sample_Sobel,           "Sobel          ",  g_drp_lib_sobel,                  sizeof(g_drp_lib_sobel)                  }, // DRP_LIB_SOBEL
     {&drp_sample_Prewitt,         "Prewitt        ",  g_drp_lib_prewitt,                sizeof(g_drp_lib_prewitt)                }, // DRP_LIB_PREWITT
     {&drp_sample_Laplacian,       "Laplacian      ",  g_drp_lib_laplacian,              sizeof(g_drp_lib_laplacian)              }, // DRP_LIB_LAPLACIAN
@@ -135,23 +137,9 @@ static const drp_lib_func drp_lib_func_tbl[] = {
     {&drp_sample_Histogram,       "Histogram      ",  g_drp_lib_histogram_normalization,sizeof(g_drp_lib_histogram_normalization)}, // DRP_LIB_HISTOGRAM
 };
 
-static void IntCallbackFunc_Vfield(DisplayBase::int_type_t int_type) {
-    drpTask.flags_set(DRP_FLG_CAMER_IN);
-}
-
-static void cb_drp_finish(uint8_t id) {
-    uint32_t tile_no;
-    uint32_t set_flgs = 0;
-
-    // Change the operation state of the DRP library notified by the argument to finish
-    for (tile_no = 0; tile_no < R_DK2_TILE_NUM; tile_no++) {
-        if (drp_lib_id[tile_no] == id) {
-            set_flgs |= (1 << tile_no);
-        }
-    }
-    drpTask.flags_set(set_flgs);
-}
-
+//
+// Start camera
+//
 static void Start_Video_Camera(void) {
     // Video capture setting (progressive form fixed)
     Display.Video_Write_Setting(
@@ -167,6 +155,9 @@ static void Start_Video_Camera(void) {
     EasyAttach_CameraStart(Display, DisplayBase::VIDEO_INPUT_CHANNEL_0);
 }
 
+//
+// Start LCD
+//
 static void Start_LCD_Display(void) {
     DisplayBase::rect_t rect;
     DisplayBase::clut_t clut_param;
@@ -208,6 +199,30 @@ static void Start_LCD_Display(void) {
     EasyAttach_LcdBacklight(true);
 }
 
+//
+// Callback functions
+//
+static void IntCallbackFunc_Vfield(DisplayBase::int_type_t int_type) {
+    drpTask.flags_set(DRP_FLG_CAMER_IN);
+}
+
+static void cb_drp_finish(uint8_t id) {
+    uint32_t tile_no;
+    uint32_t set_flgs = 0;
+
+    // Change the operation state of the DRP library notified by the argument to finish
+    for (tile_no = 0; tile_no < R_DK2_TILE_NUM; tile_no++) {
+        if (drp_lib_id[tile_no] == id) {
+            set_flgs |= (1 << tile_no);
+        }
+    }
+    drpTask.flags_set(set_flgs);
+}
+
+//
+// DRP sample functions 
+// See "mbed-gr-libs\drp-for-mbed\TARGET_RZ_A2XX\r_drp\doc" for details
+//
 static void drp_sample_Bayer2Grayscale(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
@@ -246,7 +261,6 @@ static void drp_sample_Bayer2Grayscale(drp_lib_ctl_t * drp_lib_ctl) {
     R_DK2_Unload(0, drp_lib_id);
     drp_lib_ctl->run_time = t.read_us();
 }
-
 
 static void drp_sample_ImageRotate(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
@@ -405,21 +419,20 @@ static void drp_sample_CannyHysterisis(drp_lib_ctl_t * drp_lib_ctl) {
     drp_lib_ctl->run_time = t.read_us();
 }
 
-
 static void drp_sample_Binarization(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Binarization    | */
+    /* tile 0 | Binarization     | */
     /*        +------------------+ */
-    /* tile 1 |  Binarization    | */
+    /* tile 1 | Binarization     | */
     /*        +------------------+ */
-    /* tile 2 |  Binarization    | */
+    /* tile 2 | Binarization     | */
     /*        +------------------+ */
-    /* tile 3 |  Binarization    | */
+    /* tile 3 | Binarization     | */
     /*        +------------------+ */
-    /* tile 4 |  Binarization    | */
+    /* tile 4 | Binarization     | */
     /*        +------------------+ */
-    /* tile 5 |  Binarization    | */
+    /* tile 5 | Binarization     | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -447,17 +460,17 @@ static void drp_sample_Binarization(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Erode(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Erode           | */
+    /* tile 0 | Erode            | */
     /*        +------------------+ */
-    /* tile 1 |  Erode           | */
+    /* tile 1 | Erode            | */
     /*        +------------------+ */
-    /* tile 2 |  Erode           | */
+    /* tile 2 | Erode            | */
     /*        +------------------+ */
-    /* tile 3 |  Erode           | */
+    /* tile 3 | Erode            | */
     /*        +------------------+ */
-    /* tile 4 |  Erode           | */
+    /* tile 4 | Erode            | */
     /*        +------------------+ */
-    /* tile 5 |  Erode           | */
+    /* tile 5 | Erode            | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -486,17 +499,17 @@ static void drp_sample_Erode(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Dilate(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Dilate          | */
+    /* tile 0 | Dilate           | */
     /*        +------------------+ */
-    /* tile 1 |  Dilate          | */
+    /* tile 1 | Dilate           | */
     /*        +------------------+ */
-    /* tile 2 |  Dilate          | */
+    /* tile 2 | Dilate           | */
     /*        +------------------+ */
-    /* tile 3 |  Dilate          | */
+    /* tile 3 | Dilate           | */
     /*        +------------------+ */
-    /* tile 4 |  Dilate          | */
+    /* tile 4 | Dilate           | */
     /*        +------------------+ */
-    /* tile 5 |  Dilate          | */
+    /* tile 5 | Dilate           | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -525,17 +538,17 @@ static void drp_sample_Dilate(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_GaussianBlur(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Gaussian Blur   | */
+    /* tile 0 | Gaussian Blur    | */
     /*        +------------------+ */
-    /* tile 1 |  Gaussian Blur   | */
+    /* tile 1 | Gaussian Blur    | */
     /*        +------------------+ */
-    /* tile 2 |  Gaussian Blur   | */
+    /* tile 2 | Gaussian Blur    | */
     /*        +------------------+ */
-    /* tile 3 |  Gaussian Blur   | */
+    /* tile 3 | Gaussian Blur    | */
     /*        +------------------+ */
-    /* tile 4 |  Gaussian Blur   | */
+    /* tile 4 | Gaussian Blur    | */
     /*        +------------------+ */
-    /* tile 5 |  Gaussian Blur   | */
+    /* tile 5 | Gaussian Blur    | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -564,17 +577,17 @@ static void drp_sample_GaussianBlur(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Sobel(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Sobel           | */
+    /* tile 0 | Sobel            | */
     /*        +------------------+ */
-    /* tile 1 |  Sobel           | */
+    /* tile 1 | Sobel            | */
     /*        +------------------+ */
-    /* tile 2 |  Sobel           | */
+    /* tile 2 | Sobel            | */
     /*        +------------------+ */
-    /* tile 3 |  Sobel           | */
+    /* tile 3 | Sobel            | */
     /*        +------------------+ */
-    /* tile 4 |  Sobel           | */
+    /* tile 4 | Sobel            | */
     /*        +------------------+ */
-    /* tile 5 |  Sobel           | */
+    /* tile 5 | Sobel            | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -603,17 +616,17 @@ static void drp_sample_Sobel(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Prewitt(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Prewitt         | */
+    /* tile 0 | Prewitt          | */
     /*        +------------------+ */
-    /* tile 1 |  Prewitt         | */
+    /* tile 1 | Prewitt          | */
     /*        +------------------+ */
-    /* tile 2 |  Prewitt         | */
+    /* tile 2 | Prewitt          | */
     /*        +------------------+ */
-    /* tile 3 |  Prewitt         | */
+    /* tile 3 | Prewitt          | */
     /*        +------------------+ */
-    /* tile 4 |  Prewitt         | */
+    /* tile 4 | Prewitt          | */
     /*        +------------------+ */
-    /* tile 5 |  Prewitt         | */
+    /* tile 5 | Prewitt          | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -642,17 +655,17 @@ static void drp_sample_Prewitt(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Laplacian(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Laplacian       | */
+    /* tile 0 | Laplacian        | */
     /*        +------------------+ */
-    /* tile 1 |  Laplacian       | */
+    /* tile 1 | Laplacian        | */
     /*        +------------------+ */
-    /* tile 2 |  Laplacian       | */
+    /* tile 2 | Laplacian        | */
     /*        +------------------+ */
-    /* tile 3 |  Laplacian       | */
+    /* tile 3 | Laplacian        | */
     /*        +------------------+ */
-    /* tile 4 |  Laplacian       | */
+    /* tile 4 | Laplacian        | */
     /*        +------------------+ */
-    /* tile 5 |  Laplacian       | */
+    /* tile 5 | Laplacian        | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -682,15 +695,15 @@ static void drp_sample_UnsharpMasking(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
     /* tile 0 |                  | */
-    /*        +  UnsharpMasking  + */
+    /*        + UnsharpMasking   + */
     /* tile 1 |                  | */
     /*        +------------------+ */
     /* tile 2 |                  | */
-    /*        +  UnsharpMasking  + */
+    /*        + UnsharpMasking   + */
     /* tile 3 |                  | */
     /*        +------------------+ */
     /* tile 4 |                  | */
-    /*        +  UnsharpMasking  + */
+    /*        + UnsharpMasking   + */
     /* tile 5 |                  | */
     /*        +------------------+ */
     t.reset();
@@ -721,13 +734,13 @@ static void drp_sample_UnsharpMasking(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Cropping(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Cropping        | */
+    /* tile 0 | Cropping         | */
     /*        +------------------+ */
     /* tile 1 |                  | */
     /*        +                  + */
     /* tile 2 |                  | */
     /*        +                  + */
-    /* tile 3 |                  | */
+    /* tile 3 | Not used         | */
     /*        +                  + */
     /* tile 4 |                  | */
     /*        +                  + */
@@ -763,13 +776,13 @@ static void drp_sample_ResizeBilinearF(drp_lib_ctl_t * drp_lib_ctl) {
     /* tile 0 |                  | */
     /*        +                  + */
     /* tile 1 |                  | */
-    /*        +  ResizeBilinearF + */
+    /*        + ResizeBilinearF  + */
     /* tile 2 |                  | */
     /*        +                  + */
     /* tile 3 |                  | */
     /*        +------------------+ */
     /* tile 4 |                  | */
-    /*        +                  + */
+    /*        + Not used         + */
     /* tile 5 |                  | */
     /*        +------------------+ */
     t.reset();
@@ -797,17 +810,17 @@ static void drp_sample_ResizeBilinearF(drp_lib_ctl_t * drp_lib_ctl) {
 static void drp_sample_Histogram(drp_lib_ctl_t * drp_lib_ctl) {
     /* Load DRP Library            */
     /*        +------------------+ */
-    /* tile 0 |  Histogram       | */
+    /* tile 0 | Histogram        | */
     /*        +------------------+ */
-    /* tile 1 |  Histogram       | */
+    /* tile 1 | Histogram        | */
     /*        +------------------+ */
-    /* tile 2 |  Histogram       | */
+    /* tile 2 | Histogram        | */
     /*        +------------------+ */
-    /* tile 3 |  Histogram       | */
+    /* tile 3 | Histogram        | */
     /*        +------------------+ */
-    /* tile 4 |  Histogram       | */
+    /* tile 4 | Histogram        | */
     /*        +------------------+ */
-    /* tile 5 |  Histogram       | */
+    /* tile 5 | Histogram        | */
     /*        +------------------+ */
     t.reset();
     R_DK2_Load(
@@ -868,12 +881,17 @@ static void drp_sample_Histogram(drp_lib_ctl_t * drp_lib_ctl) {
     drp_lib_ctl->run_time = t.read_us();
 }
 
-#if RAM_TABLE_DYNAMIC_LOADING
+//
+// Register DRP function
+//
 static void init_drp_work_memory(void) {
+#if RAM_TABLE_DYNAMIC_LOADING
     drp_work_memory_top = drp_lib_work_memory;
+#endif
 }
 
-static uint8_t * create_ram_drp_lib_bin(const uint8_t * lib_bin, uint32_t lib_bin_size) {
+static uint8_t * get_configuration_data(const uint8_t * lib_bin, uint32_t lib_bin_size) {
+#if RAM_TABLE_DYNAMIC_LOADING
     uint8_t * ret_addr = drp_work_memory_top;
 
     drp_work_memory_top = (uint8_t *)(((uint32_t)drp_work_memory_top + lib_bin_size + 32ul) & ~31ul);
@@ -885,18 +903,18 @@ static uint8_t * create_ram_drp_lib_bin(const uint8_t * lib_bin, uint32_t lib_bi
     dcache_clean(ret_addr, lib_bin_size);
 
     return ret_addr;
-}
+#else
+    (void)lib_bin_size;
+
+    return (uint8_t *)lib_bin;
 #endif
+}
 
 static void set_drp_func(drp_lib_ctl_t * p_drp_lib, uint32_t drp_lib_no, uint8_t * src, uint8_t * dst) {
     const drp_lib_func * p_drp_lib_func = &drp_lib_func_tbl[drp_lib_no];
 
     p_drp_lib->drp_lib_no = drp_lib_no;
-#if RAM_TABLE_DYNAMIC_LOADING
-    p_drp_lib->p_drp_lib_bin = create_ram_drp_lib_bin(p_drp_lib_func->lib_bin, p_drp_lib_func->lib_bin_size);
-#else
-    p_drp_lib->p_drp_lib_bin = (uint8_t *)p_drp_lib_func->lib_bin;
-#endif
+    p_drp_lib->p_drp_lib_bin = get_configuration_data(p_drp_lib_func->lib_bin, p_drp_lib_func->lib_bin_size);
     p_drp_lib->src = src;
     p_drp_lib->dst = dst;
 }
@@ -904,9 +922,7 @@ static void set_drp_func(drp_lib_ctl_t * p_drp_lib, uint32_t drp_lib_no, uint8_t
 static uint32_t init_drp_lib(uint32_t mode) {
     uint32_t idx = 0;
 
-#if RAM_TABLE_DYNAMIC_LOADING
     init_drp_work_memory();
-#endif
     memset(fbuf_overlay, 0, sizeof(fbuf_overlay));
 
     switch (mode) {
@@ -939,7 +955,7 @@ static uint32_t init_drp_lib(uint32_t mode) {
         case 5:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
             set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_GAUSSIANBLUR,    fbuf_work1, fbuf_clat8);  // Gaussian Blur
+            set_drp_func(&drp_lib[idx++], DRP_LIB_GAUSSIANBLUR,    fbuf_work1, fbuf_clat8);  // GaussianBlur
             break;
         case 6:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
@@ -980,8 +996,11 @@ static uint32_t init_drp_lib(uint32_t mode) {
     return idx;
 }
 
-static void draw_str(const char * str, uint32_t drp_no) {
-    ascii_font.DrawStr(str, 5, 5 + (AsciiFont::CHAR_PIX_HEIGHT + 1) * 2 * drp_no, 1, 2);
+//
+// Drawing of DRP processing time
+//
+static void draw_str(const char * str, uint32_t line) {
+    ascii_font.DrawStr(str, 5, 5 + (AsciiFont::CHAR_PIX_HEIGHT + 1) * 2 * line, 1, 2);
 }
 
 static void draw_processing_time(uint32_t drp_lib_num) {
@@ -1002,6 +1021,9 @@ static void draw_processing_time(uint32_t drp_lib_num) {
     draw_str(str, i);
 }
 
+//
+// Button operation
+//
 static void button_fall(void) {
     if (mode_req < DRP_MODE_MAX) {
         mode_req++;
@@ -1011,6 +1033,9 @@ static void button_fall(void) {
     event_time.reset();
 }
 
+//
+// DRP task processing
+//
 static void drp_task(void) {
     uint32_t mode = 0xffffffff;
     uint32_t drp_lib_num = 0;
