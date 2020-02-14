@@ -81,7 +81,7 @@ static uint8_t drp_lib_work_memory[800 * 1024]__attribute((aligned(32)));
 
 static const uint32_t clut_data_resut[] = {0x00000000, 0xff00ff00};  // ARGB8888
 
-#define DRP_MODE_MAX              11
+#define DRP_MODE_MAX              12
 
 #define DRP_LIB_BAYER2GRAYSCALE    0
 #define DRP_LIB_IMAGEROTATE        1
@@ -927,66 +927,58 @@ static uint32_t init_drp_lib(uint32_t mode) {
 
     switch (mode) {
         case 0:
-            set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_clat8);  // ImageRotate
+            set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_clat8);  // Bayer2Grayscale
             break;
         case 1:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_BINARIZATION,    fbuf_work1, fbuf_clat8);  // Binarization
+            set_drp_func(&drp_lib[idx++], DRP_LIB_BINARIZATION,    fbuf_work0, fbuf_clat8);  // Binarization
             break;
         case 2:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_MEDIANBLUR,      fbuf_work1, fbuf_work0);  // MedianBlur
-            set_drp_func(&drp_lib[idx++], DRP_LIB_CANNYCALCULATE,  fbuf_work0, fbuf_work1);  // CannyCalculate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_CANNYHYSTERISIS, fbuf_work1, fbuf_clat8);  // CannyHysterisis
+            set_drp_func(&drp_lib[idx++], DRP_LIB_MEDIANBLUR,      fbuf_work0, fbuf_work1);  // MedianBlur
+            set_drp_func(&drp_lib[idx++], DRP_LIB_CANNYCALCULATE,  fbuf_work1, fbuf_work0);  // CannyCalculate
+            set_drp_func(&drp_lib[idx++], DRP_LIB_CANNYHYSTERISIS, fbuf_work0, fbuf_clat8);  // CannyHysterisis
             break;
         case 3:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_ERODE,           fbuf_work1, fbuf_clat8);  // Erode
+            set_drp_func(&drp_lib[idx++], DRP_LIB_ERODE,           fbuf_work0, fbuf_clat8);  // Erode
             break;
         case 4:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_DILATE,          fbuf_work1, fbuf_clat8);  // Dilate
+            set_drp_func(&drp_lib[idx++], DRP_LIB_DILATE,          fbuf_work0, fbuf_clat8);  // Dilate
             break;
         case 5:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_GAUSSIANBLUR,    fbuf_work1, fbuf_clat8);  // GaussianBlur
+            set_drp_func(&drp_lib[idx++], DRP_LIB_GAUSSIANBLUR,    fbuf_work0, fbuf_clat8);  // GaussianBlur
             break;
         case 6:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_SOBEL,           fbuf_work1, fbuf_clat8);  // Sobel
+            set_drp_func(&drp_lib[idx++], DRP_LIB_SOBEL,           fbuf_work0, fbuf_clat8);  // Sobel
             break;
         case 7:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_PREWITT,         fbuf_work1, fbuf_clat8);  // Prewitt
+            set_drp_func(&drp_lib[idx++], DRP_LIB_PREWITT,         fbuf_work0, fbuf_clat8);  // Prewitt
             break;
         case 8:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_LAPLACIAN,       fbuf_work1, fbuf_clat8);  // Laplacian
+            set_drp_func(&drp_lib[idx++], DRP_LIB_LAPLACIAN,       fbuf_work0, fbuf_clat8);  // Laplacian
             break;
         case 9:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_UNSHARPMASKING,  fbuf_work1, fbuf_clat8);  // UnsharpMasking
+            set_drp_func(&drp_lib[idx++], DRP_LIB_UNSHARPMASKING,  fbuf_work0, fbuf_clat8);  // UnsharpMasking
             break;
         case 10:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_CROPPING,        fbuf_work1, fbuf_work0);  // Cropping
-            set_drp_func(&drp_lib[idx++], DRP_LIB_RESIZEBILINEARF, fbuf_work0, fbuf_clat8);  // ResizeBilinearF
+            set_drp_func(&drp_lib[idx++], DRP_LIB_CROPPING,        fbuf_work0, fbuf_work1);  // Cropping
+            set_drp_func(&drp_lib[idx++], DRP_LIB_RESIZEBILINEARF, fbuf_work1, fbuf_clat8);  // ResizeBilinearF
             break;
         case 11:
             set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
-            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_work1);  // ImageRotate
-            set_drp_func(&drp_lib[idx++], DRP_LIB_HISTOGRAM,       fbuf_work1, fbuf_clat8);  // Histogram
+            set_drp_func(&drp_lib[idx++], DRP_LIB_HISTOGRAM,       fbuf_work0, fbuf_clat8);  // Histogram
+            break;
+        case 12:
+            set_drp_func(&drp_lib[idx++], DRP_LIB_BAYER2GRAYSCALE, fbuf_bayer, fbuf_work0);  // Bayer2Grayscale
+            set_drp_func(&drp_lib[idx++], DRP_LIB_IMAGEROTATE,     fbuf_work0, fbuf_clat8);  // ImageRotate
             break;
         default:
             // do nothing
